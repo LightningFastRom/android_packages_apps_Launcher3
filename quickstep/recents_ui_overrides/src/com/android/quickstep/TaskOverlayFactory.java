@@ -16,6 +16,8 @@
 
 package com.android.quickstep;
 
+import static com.android.launcher3.util.MainThreadInitializedObject.forOverride;
+
 import android.graphics.Matrix;
 import android.view.View;
 
@@ -43,12 +45,12 @@ public class TaskOverlayFactory implements ResourceBasedOverride {
             new TaskSystemShortcut.SplitScreen(),
             new TaskSystemShortcut.Pin(),
             new TaskSystemShortcut.Install(),
-            new TaskSystemShortcut.Freeform()
+            new TaskSystemShortcut.Freeform(),
+            new TaskSystemShortcut.KillApp()
     };
 
     public static final MainThreadInitializedObject<TaskOverlayFactory> INSTANCE =
-            new MainThreadInitializedObject<>(c -> Overrides.getObject(TaskOverlayFactory.class,
-                    c, R.string.task_overlay_factory_class));
+            forOverride(TaskOverlayFactory.class, R.string.task_overlay_factory_class);
 
     public List<TaskSystemShortcut> getEnabledShortcuts(TaskView taskView) {
         final ArrayList<TaskSystemShortcut> shortcuts = new ArrayList<>();

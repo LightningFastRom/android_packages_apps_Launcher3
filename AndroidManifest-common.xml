@@ -19,7 +19,9 @@
 -->
 <manifest
     xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.android.launcher3">
+    package="com.android.launcher3"
+    coreApp="true"
+    android:sharedUserId="android.uid.system">
 
     <!--
     The manifest defines the common entries that should be present in any derivative of Launcher3.
@@ -43,7 +45,10 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+    <uses-permission android:name="android.permission.READ_DEVICE_CONFIG" />
+    <uses-permission android:name="android.permission.DEVICE_POWER" />
 
+    <uses-permission android:name="android.permission.FORCE_STOP_PACKAGES" />
 
     <!--
     Permissions required for read/write access to the workspace data. These permission name
@@ -154,12 +159,13 @@
 
         <!--
         The content provider for exposing various launcher grid options.
-        TODO: Add proper permissions
         -->
         <provider
             android:name="com.android.launcher3.graphics.GridOptionsProvider"
             android:authorities="${packageName}.grid_control"
-            android:exported="true" />
+            android:exported="true"
+            android:writePermission="${packageName}.permission.WRITE_SETTINGS"
+            android:readPermission="${packageName}.permission.READ_SETTINGS" />
 
         <!--
         The settings activity. To extend point settings_fragment_name to appropriate fragment class

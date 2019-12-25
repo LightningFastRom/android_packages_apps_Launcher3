@@ -193,9 +193,9 @@ public class InvariantDeviceProfile {
                 invDistWeightedInterpolate(minWidthDps,  minHeightDps, allOptions);
 
         GridOption closestProfile = allOptions.get(0).grid;
-        numRows = closestProfile.numRows;
-        numColumns = closestProfile.numColumns;
-        numHotseatIcons = closestProfile.numHotseatIcons;
+        numRows = Utilities.getGridRows(context, closestProfile.numRows);
+        numColumns = Utilities.getGridColumns(context, closestProfile.numColumns);
+        numHotseatIcons = Utilities.getHotseatIcons(context, closestProfile.numHotseatIcons);
         defaultLayoutId = closestProfile.defaultLayoutId;
         demoModeLayoutId = closestProfile.demoModeLayoutId;
         numFolderRows = closestProfile.numFolderRows;
@@ -288,9 +288,7 @@ public class InvariantDeviceProfile {
         InvariantDeviceProfile oldProfile = new InvariantDeviceProfile(this);
 
         // Re-init grid
-        // TODO(b/131867841): We pass in null here so that we can calculate the closest profile
-        // without the bias of the grid name.
-        initGrid(context, null);
+        initGrid(context, Utilities.getPrefs(context).getString(KEY_IDP_GRID_NAME, null));
 
         int changeFlags = 0;
         if (numRows != oldProfile.numRows ||

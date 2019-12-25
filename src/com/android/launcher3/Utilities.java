@@ -16,9 +16,12 @@
 
 package com.android.launcher3;
 
+import static com.android.launcher3.ItemInfoWithIcon.FLAG_ICON_BADGED;
+
 import android.animation.ValueAnimator;
 import android.annotation.TargetApi;
 import android.app.ActivityManager;
+import android.app.Person;
 import android.app.WallpaperManager;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
@@ -71,9 +74,11 @@ import com.android.launcher3.dragndrop.FolderAdaptiveIcon;
 import com.android.launcher3.graphics.RotationMode;
 import com.android.launcher3.graphics.TintedDrawableSpan;
 import com.android.launcher3.icons.LauncherIcons;
+import com.android.launcher3.settings.SettingsActivity;
 import com.android.launcher3.shortcuts.DeepShortcutManager;
 import com.android.launcher3.shortcuts.ShortcutKey;
 import com.android.launcher3.util.IntArray;
+import com.android.launcher3.util.LooperExecutor;
 import com.android.launcher3.util.PackageManagerHelper;
 import com.android.launcher3.views.Transposable;
 import com.android.launcher3.widget.PendingAddShortcutInfo;
@@ -92,8 +97,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static com.android.launcher3.ItemInfoWithIcon.FLAG_ICON_BADGED;
-
 /**
  * Various utilities shared amongst the Launcher's classes.
  */
@@ -109,6 +112,9 @@ public final class Utilities {
     private static final Matrix sMatrix = new Matrix();
     private static final Matrix sInverseMatrix = new Matrix();
 
+    public static final String[] EMPTY_STRING_ARRAY = new String[0];
+    public static final Person[] EMPTY_PERSON_ARRAY = new Person[0];
+
     public static final boolean ATLEAST_Q = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q;
 
     public static final boolean ATLEAST_P =
@@ -122,20 +128,12 @@ public final class Utilities {
 
     public static final int SINGLE_FRAME_MS = 16;
 
+    private static final long WAIT_BEFORE_RESTART = 250;
+
     /**
      * Set on a motion event dispatched from the nav bar. See {@link MotionEvent#setEdgeFlags(int)}.
      */
     public static final int EDGE_NAV_BAR = 1 << 8;
-
-    /**
-     * Set on a motion event do disallow any gestures and only handle touch.
-     * See {@link MotionEvent#setEdgeFlags(int)}.
-     */
-    public static final int FLAG_NO_GESTURES = 1 << 9;
-
-    public static boolean shouldDisableGestures(MotionEvent ev) {
-        return (ev.getEdgeFlags() & FLAG_NO_GESTURES) == FLAG_NO_GESTURES;
-    }
 
     /**
      * Indicates if the device has a debug build. Should only be used to store additional info or
@@ -159,6 +157,12 @@ public final class Utilities {
     private static final int CORE_POOL_SIZE = CPU_COUNT + 1;
     private static final int MAXIMUM_POOL_SIZE = CPU_COUNT * 2 + 1;
     private static final int KEEP_ALIVE = 1;
+
+    public static final String GRID_COLUMNS = "pref_grid_columns";
+    public static final String GRID_ROWS = "pref_grid_rows";
+    public static final String HOTSEAT_ICONS = "pref_hotseat_icons";
+    public static final String DESKTOP_SHOW_QSB = "pref_desktop_show_qsb";
+
     /**
      * An {@link Executor} to be used with async task with no limit on the queue size.
      */
@@ -181,6 +185,35 @@ public final class Utilities {
         ResolveInfo ri = context.getPackageManager().resolveActivity(
                 PackageManagerHelper.getStyleWallpapersIntent(context), 0);
         return ri != null;
+    }
+
+    public static int getGridColumns(Context context, int fallback) {
+        return getIconCount(context, GRID_COLUMNS, fallback);
+    }
+
+    public static int getGridRows(Context context, int fallback) {
+        return getIconCount(context, GRID_ROWS, fallback);
+    }
+
+    public static int getHotseatIcons(Context context, int fallback) {
+        return getIconCount(context, HOTSEAT_ICONS, fallback);
+    }
+
+    private static int getIconCount(Context context, String preferenceName, int preferenceFallback) {
+        String saved = getPrefs(context).getString(preferenceName, "-1");
+        try {
+            int num = Integer.valueOf(saved);
+            if (num == -1) {
+                return preferenceFallback;
+            }
+            return num;
+        } catch (Exception e) {
+            return preferenceFallback;
+        }
+    }
+
+    public static boolean showDesktopQsb(Context context) {
+        return getPrefs(context).getBoolean(DESKTOP_SHOW_QSB, true);
     }
 
     /**
@@ -738,7 +771,7 @@ public final class Utilities {
         int[] array = new int[tokenizer.countTokens()];
         int count = 0;
         while (tokenizer.hasMoreTokens()) {
-            array[count] = Integer.parseInt(tokenizer.nextToken());
+            array[count] = Integer.parseInt(tokenizer.nextToken().trim());
             count++;
         }
         return array;
@@ -779,5 +812,21 @@ public final class Utilities {
         public int getIntrinsicWidth() {
             return mSize;
         }
+    }
+
+    public static void restart(final Context context) {
+        //ProgressDialog.show(context, null, context.getString(R.string.state_loading), true, false);
+        new LooperExecutor(LauncherModel.getWorkerLooper()).execute(() -> {
+            try {
+                Thread.sleep(WAIT_BEFORE_RESTART);
+            } catch (Exception ignored) {
+            }
+            android.os.Process.killProcess(android.os.Process.myPid());
+        });
+    }
+
+    static boolean hasFeedIntegration(Context context) {
+        SharedPreferences prefs = getPrefs(context.getApplicationContext());
+        return prefs.getBoolean(SettingsActivity.KEY_FEED_INTEGRATION, true);
     }
 }

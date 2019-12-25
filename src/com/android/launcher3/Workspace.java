@@ -53,12 +53,15 @@ import android.util.AttributeSet;
 import android.util.Log;
 import android.util.SparseArray;
 import android.view.LayoutInflater;
+import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.Toast;
+
+import com.android.internal.util.arrow.ArrowUtils;
 
 import com.android.launcher3.Launcher.LauncherOverlay;
 import com.android.launcher3.LauncherAppWidgetHost.ProviderChangedListener;
@@ -81,6 +84,7 @@ import com.android.launcher3.folder.PreviewBackground;
 import com.android.launcher3.graphics.DragPreviewProvider;
 import com.android.launcher3.graphics.PreloadIconDrawable;
 import com.android.launcher3.graphics.RotationMode;
+import com.android.launcher3.logging.UserEventDispatcher;
 import com.android.launcher3.pageindicators.WorkspacePageIndicator;
 import com.android.launcher3.popup.PopupContainerWithArrow;
 import com.android.launcher3.shortcuts.ShortcutDragPreviewProvider;
@@ -251,6 +255,8 @@ public class Workspace extends PagedView<WorkspacePageIndicator>
     // Handles workspace state transitions
     private final WorkspaceStateTransitionAnimation mStateTransitionAnimation;
 
+    private GestureDetector mGestureListener;
+
     /**
      * Used to inflate the Workspace from XML.
      *
@@ -282,7 +288,23 @@ public class Workspace extends PagedView<WorkspacePageIndicator>
 
         // Disable multitouch across the workspace/all apps/customize tray
         setMotionEventSplittingEnabled(true);
+
+        context.enforceCallingOrSelfPermission(
+                    android.Manifest.permission.DEVICE_POWER, null);
+        mGestureListener =
+                new GestureDetector(context, new GestureDetector.SimpleOnGestureListener() {
+            @Override
+            public boolean onDoubleTap(MotionEvent event) {
+                ArrowUtils.switchScreenOff(context);
+                return true;
+            }
+        });
+
         setOnTouchListener(new WorkspaceTouchListener(mLauncher, this));
+    }
+
+    public boolean checkDoubleTap(MotionEvent ev) {
+        return mGestureListener.onTouchEvent(ev);
     }
 
     @Override
@@ -370,10 +392,6 @@ public class Workspace extends PagedView<WorkspacePageIndicator>
 
     @Override
     public void onDragStart(DropTarget.DragObject dragObject, DragOptions options) {
-        if (TestProtocol.sDebugTracing) {
-            android.util.Log.d(TestProtocol.NO_DRAG_TAG,
-                    "onDragStart 1");
-        }
         if (ENFORCE_DRAG_EVENT_ORDER) {
             enforceDragParity("onDragStart", 0, 0);
         }
@@ -425,8 +443,7 @@ public class Workspace extends PagedView<WorkspacePageIndicator>
 
         // Always enter the spring loaded mode
         if (TestProtocol.sDebugTracing) {
-            android.util.Log.d(TestProtocol.NO_DRAG_TAG,
-                    "onDragStart 2");
+            Log.d(TestProtocol.NO_DRAG_TO_WORKSPACE, "Switching to SPRING_LOADED");
         }
         mLauncher.getStateManager().goToState(SPRING_LOADED);
     }
@@ -502,8 +519,9 @@ public class Workspace extends PagedView<WorkspacePageIndicator>
         }
         // Add the first page
         CellLayout firstPage = insertNewWorkspaceScreen(Workspace.FIRST_SCREEN_ID, 0);
-        // Always add a QSB on the first screen.
-        if (qsb == null) {
+        // Always add a QSB on the first screen
+        // if enabled by the user.
+        if (qsb == null && Utilities.showDesktopQsb(getContext())) {
             // In transposed layout, we add the QSB in the Grid. As workspace does not touch the
             // edges, we do not need a full width QSB.
             qsb = LayoutInflater.from(getContext())
@@ -1056,13 +1074,18 @@ public class Workspace extends PagedView<WorkspacePageIndicator>
             if (!mOverlayShown) {
                 mLauncher.getUserEventDispatcher().logActionOnContainer(Action.Touch.SWIPE,
                         Action.Direction.LEFT, ContainerType.WORKSPACE, 0);
+                mLauncher.getStatsLogManager().logSwipeOnContainer(true, 0);
             }
             mOverlayShown = true;
             // Not announcing the overlay page for accessibility since it announces itself.
         } else if (Float.compare(scroll, 0f) == 0) {
             if (mOverlayShown) {
-                mLauncher.getUserEventDispatcher().logActionOnContainer(Action.Touch.SWIPE,
+                UserEventDispatcher ued = mLauncher.getUserEventDispatcher();
+                if (!ued.isPreviousHomeGesture()) {
+                    mLauncher.getUserEventDispatcher().logActionOnContainer(Action.Touch.SWIPE,
                         Action.Direction.RIGHT, ContainerType.WORKSPACE, -1);
+                    mLauncher.getStatsLogManager().logSwipeOnContainer(false, -1);
+                }
             } else if (Float.compare(mOverlayTranslation, 0f) != 0) {
                 // When arriving to 0 overscroll from non-zero overscroll, announce page for
                 // accessibility since default announcements were disabled while in overscroll
@@ -1746,6 +1769,9 @@ public class Workspace extends PagedView<WorkspacePageIndicator>
     public void prepareAccessibilityDrop() { }
 
     public void onDrop(final DragObject d, DragOptions options) {
+        if (TestProtocol.sDebugTracing) {
+            Log.d(TestProtocol.NO_DRAG_TO_WORKSPACE, "Workspace.onDrop");
+        }
         mDragViewVisualCenter = d.getVisualCenter(mDragViewVisualCenter);
         CellLayout dropTargetLayout = mDropToLayout;
 
@@ -2423,6 +2449,9 @@ public class Workspace extends PagedView<WorkspacePageIndicator>
      * to add an item to one of the workspace screens.
      */
     private void onDropExternal(final int[] touchXY, final CellLayout cellLayout, DragObject d) {
+        if (TestProtocol.sDebugTracing) {
+            Log.d(TestProtocol.NO_DRAG_TO_WORKSPACE, "Workspace.onDropExternal");
+        }
         if (d.dragInfo instanceof PendingAddShortcutInfo) {
             WorkspaceItemInfo si = ((PendingAddShortcutInfo) d.dragInfo)
                     .activityInfo.createWorkspaceItemInfo();
@@ -3254,6 +3283,10 @@ public class Workspace extends PagedView<WorkspacePageIndicator>
                 });
             }
         }
+    }
+
+    public boolean isOverlayShown() {
+        return mOverlayShown;
     }
 
     void moveToDefaultScreen() {

@@ -22,41 +22,51 @@ import static com.android.launcher3.states.RotationHelper.getAllowRotationDefaul
 import static com.android.launcher3.util.SecureSettingsObserver.newNotificationSettingsObserver;
 
 import android.app.Activity;
+import android.app.AlarmManager;
 import android.app.DialogFragment;
 import android.app.Fragment;
-import android.content.ComponentName;
-import android.content.Context;
-import android.content.SharedPreferences;
+import android.app.PendingIntent;
+import android.app.ProgressDialog;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.text.TextUtils;
+import android.util.Log;
+import android.view.MenuItem;
 
 import com.android.launcher3.LauncherFiles;
+import com.android.launcher3.LauncherTab;
 import com.android.launcher3.R;
 import com.android.launcher3.Utilities;
 import com.android.launcher3.config.FeatureFlags;
-import com.android.launcher3.graphics.GridOptionsProvider;
 import com.android.launcher3.uioverrides.plugins.PluginManagerWrapper;
 import com.android.launcher3.util.SecureSettingsObserver;
 
+import androidx.preference.ListPreference;
 import androidx.preference.Preference;
+import androidx.preference.Preference.OnPreferenceChangeListener;
 import androidx.preference.PreferenceFragment;
 import androidx.preference.PreferenceFragment.OnPreferenceStartFragmentCallback;
 import androidx.preference.PreferenceFragment.OnPreferenceStartScreenCallback;
 import androidx.preference.PreferenceGroup.PreferencePositionCallback;
 import androidx.preference.PreferenceScreen;
+import androidx.preference.SwitchPreference;
 import androidx.recyclerview.widget.RecyclerView;
 
 /**
  * Settings activity for Launcher. Currently implements the following setting: Allow rotation
  */
 public class SettingsActivity extends Activity
-        implements OnPreferenceStartFragmentCallback, OnPreferenceStartScreenCallback,
-        SharedPreferences.OnSharedPreferenceChangeListener{
+        implements OnPreferenceStartFragmentCallback, OnPreferenceStartScreenCallback {
 
     private static final String DEVELOPER_OPTIONS_KEY = "pref_developer_options";
     private static final String FLAGS_PREFERENCE_KEY = "flag_toggler";
+    private static final String GRID_ROWS_KEY = "pref_grid_rows";
+    private static final String GRID_COLUMNS_KEY = "pref_grid_columns";
+    private static final String HOTSEAT_ICONS_KEY = "pref_hotseat_icons";
 
     private static final String NOTIFICATION_DOTS_PREFERENCE_KEY = "pref_icon_badging";
     /** Hidden field Settings.Secure.ENABLED_NOTIFICATION_LISTENERS */
@@ -67,7 +77,7 @@ public class SettingsActivity extends Activity
     private static final int DELAY_HIGHLIGHT_DURATION_MILLIS = 600;
     public static final String SAVE_HIGHLIGHTED_KEY = "android:preference_highlighted";
 
-    public static final String GRID_OPTIONS_PREFERENCE_KEY = "pref_grid_options";
+    public static final String KEY_FEED_INTEGRATION = "pref_feed_integration";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -86,28 +96,6 @@ public class SettingsActivity extends Activity
             getFragmentManager().beginTransaction()
                     .replace(android.R.id.content, f)
                     .commit();
-        }
-        Utilities.getPrefs(getApplicationContext()).registerOnSharedPreferenceChangeListener(this);
-    }
-    @Override
-    public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
-        if (GRID_OPTIONS_PREFERENCE_KEY.equals(key)) {
-
-            final ComponentName cn = new ComponentName(getApplicationContext(),
-                    GridOptionsProvider.class);
-            Context c = getApplicationContext();
-            int oldValue = c.getPackageManager().getComponentEnabledSetting(cn);
-            int newValue;
-            if (Utilities.getPrefs(c).getBoolean(GRID_OPTIONS_PREFERENCE_KEY, false)) {
-                newValue = PackageManager.COMPONENT_ENABLED_STATE_ENABLED;
-            } else {
-                newValue = PackageManager.COMPONENT_ENABLED_STATE_DISABLED;
-            }
-
-            if (oldValue != newValue) {
-                c.getPackageManager().setComponentEnabledSetting(cn, newValue,
-                        PackageManager.DONT_KILL_APP);
-            }
         }
     }
 
@@ -175,6 +163,54 @@ public class SettingsActivity extends Activity
                     screen.removePreference(preference);
                 }
             }
+
+
+            SwitchPreference feedIntegration = (SwitchPreference)
+                    findPreference(KEY_FEED_INTEGRATION);
+
+            if (!hasPackageInstalled(LauncherTab.SEARCH_PACKAGE)) {
+                getPreferenceScreen().removePreference(feedIntegration);
+            }
+
+            final ListPreference gridColumns = (ListPreference) findPreference(Utilities.GRID_COLUMNS);
+            gridColumns.setSummary(gridColumns.getEntry());
+            gridColumns.setOnPreferenceChangeListener(new OnPreferenceChangeListener() {
+                public boolean onPreferenceChange(Preference preference, Object newValue) {
+                    int index = gridColumns.findIndexOfValue((String) newValue);
+                    gridColumns.setSummary(gridColumns.getEntries()[index]);
+                    Utilities.restart(getActivity());
+                    return true;
+                }
+            });
+
+            final ListPreference gridRows = (ListPreference) findPreference(Utilities.GRID_ROWS);
+            gridRows.setSummary(gridRows.getEntry());
+            gridRows.setOnPreferenceChangeListener(new OnPreferenceChangeListener() {
+                public boolean onPreferenceChange(Preference preference, Object newValue) {
+                    int index = gridRows.findIndexOfValue((String) newValue);
+                    gridRows.setSummary(gridRows.getEntries()[index]);
+                    Utilities.restart(getActivity());
+                    return true;
+                }
+            });
+
+            final ListPreference hotseatColumns = (ListPreference) findPreference(Utilities.HOTSEAT_ICONS);
+            hotseatColumns.setSummary(hotseatColumns.getEntry());
+            hotseatColumns.setOnPreferenceChangeListener(new OnPreferenceChangeListener() {
+                public boolean onPreferenceChange(Preference preference, Object newValue) {
+                    int index = hotseatColumns.findIndexOfValue((String) newValue);
+                    hotseatColumns.setSummary(hotseatColumns.getEntries()[index]);
+                    Utilities.restart(getActivity());
+                    return true;
+                }
+            });
+            SwitchPreference desktopShowQsb = (SwitchPreference) findPreference(Utilities.DESKTOP_SHOW_QSB);
+            desktopShowQsb.setOnPreferenceChangeListener(new OnPreferenceChangeListener() {
+                public boolean onPreferenceChange(Preference preference, Object newValue) {
+                    Utilities.restart(getActivity());
+                    return true;
+                }
+            });
         }
 
         @Override
@@ -230,10 +266,6 @@ public class SettingsActivity extends Activity
                     // Show if plugins are enabled or flag UI is enabled.
                     return FeatureFlags.showFlagTogglerUi(getContext()) ||
                             PluginManagerWrapper.hasPlugins(getContext());
-                case GRID_OPTIONS_PREFERENCE_KEY:
-                    return Utilities.isDevelopersOptionsEnabled(getContext()) &&
-                            Utilities.IS_DEBUG_DEVICE &&
-                            Utilities.existsStyleWallpapers(getContext());
             }
 
             return true;
@@ -249,6 +281,16 @@ public class SettingsActivity extends Activity
                     getView().postDelayed(highlighter, DELAY_HIGHLIGHT_DURATION_MILLIS);
                     mPreferenceHighlighted = true;
                 }
+            }
+        }
+
+        private boolean hasPackageInstalled(String pkgName) {
+            try {
+                ApplicationInfo ai = getContext().getPackageManager()
+                        .getApplicationInfo(pkgName, 0);
+                return ai.enabled;
+            } catch (PackageManager.NameNotFoundException e) {
+                return false;
             }
         }
 
